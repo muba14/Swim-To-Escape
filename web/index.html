@@ -1,0 +1,184 @@
+<title>Swim to Escape: Octopus</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* layout: one-screen phone game — home / levels / shop / trophies as stacked screens,
+   game = HUD strip + canvas + power bar; everything drawn in a pixel style */
+@font-face{font-family:'PS2P';src:url(data:font/woff2;base64,{{FONT_LATIN}}) format('woff2');font-display:block;
+ unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'PS2P';src:url(data:font/woff2;base64,{{FONT_EXT}}) format('woff2');font-display:block;
+ unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+:root{
+ --bg:#0b141b;--panel:#14323a;--panel2:#0f242b;--line:#3fd6c8;--gold:#ffc93c;--pink:#ff6f91;
+ --orange:#e8682a;--dim:#2a3e46;--text:#eef7f6;--muted:#8fb3b0;
+ --px:'PS2P',ui-monospace,Menlo,Consolas,monospace;color-scheme:dark}
+html,body{height:100%}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--text);font-family:var(--px);overflow:hidden;touch-action:none;
+ user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+#app{height:100%;max-width:520px;margin:0 auto;position:relative}
+.screen{position:absolute;inset:0;box-sizing:border-box;padding-block:8px;
+ padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+ display:flex;flex-direction:column;align-items:center;gap:12px;overflow-y:auto;overflow-x:hidden;touch-action:pan-y}
+button{font-family:var(--px);font-size:11px;line-height:1.4;color:var(--text);background:var(--panel);border:3px solid var(--line);
+ padding:11px 14px;cursor:pointer;box-shadow:3px 3px 0 #0009;border-radius:0}
+button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #0009}
+button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+button:disabled{opacity:.45;cursor:default}
+button.primary{background:var(--orange);border-color:var(--gold)}
+button.ghost{background:transparent;box-shadow:none;border-color:var(--dim)}
+.sq{padding:6px 8px;border-width:2px;min-width:34px}
+h1,h2,h3{font-weight:400;margin:0}
+.muted{color:var(--muted)}
+.gold{color:var(--gold)}
+.small{font-size:9px;line-height:1.8}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center}
+.ico{image-rendering:pixelated;vertical-align:middle;flex:none}
+.shellcount{display:inline-flex;align-items:center;gap:6px;color:var(--gold);font-size:11px}
+
+/* home */
+#home{justify-content:flex-start;padding-top:8px}
+#home .logo{width:min(46vw,170px);aspect-ratio:1;max-width:100%;border-radius:50%;image-rendering:pixelated;
+ box-shadow:0 0 0 4px #0b141b,0 0 0 7px var(--line)}
+#home h1{font-size:17px;text-align:center;line-height:1.7;letter-spacing:1px}
+#home h1 span{display:block;color:var(--orange);font-size:23px}
+.menu{display:flex;flex-direction:column;gap:10px;width:100%;max-width:300px}
+.menu button{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left}
+.menu button small{font-size:8px;color:var(--gold)}
+.topbar{display:flex;justify-content:space-between;align-items:center;width:100%;gap:8px;flex:none}
+.topbar h2{font-size:13px}
+
+/* level select */
+.world{width:100%;max-width:400px;display:flex;flex-direction:column;gap:8px;padding-bottom:6px}
+.world header{display:flex;justify-content:space-between;align-items:baseline;font-size:10px;gap:8px}
+.world header b{font-weight:400;color:var(--wc)}
+.lvgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.lv{aspect-ratio:1;max-width:100%;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+ font-size:12px;border-color:var(--wc);background:var(--wbg)}
+.lv:disabled{background:#0c171d;border-color:var(--dim);color:var(--dim);opacity:1}
+.lv .st{display:flex;gap:1px}
+
+/* game */
+#game{position:absolute;inset:0;display:flex;flex-direction:column;padding-left:max(16px,env(safe-area-inset-left,0px));
+ padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:6px;box-sizing:border-box}
+.hud{display:flex;align-items:center;gap:8px;padding-block:4px;font-size:10px;flex:none}
+.hud .mid{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center}
+.hud .stars,.hud .hearts{display:flex;gap:2px;align-items:center}
+.hud .sub{font-size:8px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.hud .big{font-size:14px;color:var(--gold)}
+#stage{flex:1;position:relative;min-height:0;touch-action:none}
+#cv{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+.powerbar{display:flex;gap:8px;justify-content:center;padding-top:6px;flex:none}
+.pw{position:relative;padding:6px;width:52px;height:46px;display:flex;align-items:center;justify-content:center}
+.pw .n{position:absolute;right:-6px;top:-8px;background:var(--gold);color:#1a1200;font-size:8px;padding:3px 4px;border:2px solid #0b141b}
+.pw.active{border-color:var(--gold);background:#3a3012}
+.pw .bar{position:absolute;left:3px;right:3px;bottom:3px;height:3px;background:var(--gold);transform-origin:left}
+.hint{position:absolute;left:0;right:0;bottom:12%;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none;
+ font-size:10px;text-shadow:2px 2px 0 #000}
+.hint .hand{width:46px;height:46px;animation:swipe 1.4s ease-in-out infinite}
+@keyframes swipe{0%{transform:translateX(-50px);opacity:0}20%{opacity:1}80%{opacity:1}100%{transform:translateX(50px);opacity:0}}
+
+.banner{position:absolute;left:0;right:0;top:18%;text-align:center;font-size:18px;line-height:1.6;pointer-events:none;
+ text-shadow:3px 3px 0 #000;animation:bfade 1.9s ease-out forwards;color:var(--text)}
+.banner small{display:block;font-size:9px;color:var(--gold)}
+@keyframes bfade{0%{opacity:0;transform:translateY(8px)}15%{opacity:1;transform:none}75%{opacity:1}100%{opacity:0}}
+/* overlays */
+.over{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#05090ccc;z-index:5}
+.panel{background:var(--panel2);border:3px solid var(--line);padding:20px 18px;text-align:center;display:flex;flex-direction:column;gap:14px;
+ align-items:center;width:min(330px,92%);box-shadow:6px 6px 0 #000a;box-sizing:border-box}
+.panel h2{font-size:17px;line-height:1.5}
+.panel p{margin:0;font-size:9px;line-height:1.9;color:var(--text)}
+.stats{display:grid;grid-template-columns:1fr auto;gap:8px 14px;font-size:9px;width:100%;text-align:left}
+.stats span:nth-child(even){text-align:right;color:var(--gold);font-variant-numeric:tabular-nums}
+.rec{color:var(--pink)}
+.cardart{width:84px;height:84px;image-rendering:pixelated;background:#0b141b;border:2px solid var(--dim)}
+
+/* shop */
+.tabs{display:flex;gap:6px;width:100%;max-width:400px}
+.tabs button{flex:1;font-size:9px;padding:9px 6px}
+.tabs button[aria-selected="true"]{background:var(--line);color:#062420}
+.preview{width:120px;height:120px;image-rendering:pixelated;background:#0c1620;border:3px solid var(--dim);flex:none}
+.items{display:flex;flex-direction:column;gap:8px;width:100%;max-width:400px;padding-bottom:10px}
+.item{display:flex;align-items:center;gap:10px;background:var(--panel2);border:2px solid var(--dim);padding:8px}
+.item .nm{flex:1;min-width:0;font-size:9px;line-height:1.7}
+.item .nm small{display:block;color:var(--muted);font-size:7px}
+.item button{font-size:8px;padding:8px 9px;white-space:nowrap}
+.item.on{border-color:var(--gold)}
+.sec{width:100%;max-width:400px;font-size:9px;color:var(--muted);margin-top:4px}
+
+/* achievements */
+.ach{display:flex;gap:10px;align-items:center;background:var(--panel2);border:2px solid var(--dim);padding:10px;width:100%;max-width:400px;box-sizing:border-box}
+.ach .nm{flex:1;min-width:0;font-size:9px;line-height:1.8}
+.ach .nm small{display:block;color:var(--muted);font-size:7px;line-height:1.7}
+.ach.done{border-color:var(--gold)}
+.ach .rw{font-size:8px;color:var(--gold);white-space:nowrap}
+
+/* toast */
+#toasts{position:absolute;left:0;right:0;top:calc(8px + env(safe-area-inset-top,0px));display:flex;flex-direction:column;align-items:center;gap:6px;z-index:9;pointer-events:none}
+.toast{background:#2a2410;border:3px solid var(--gold);padding:10px 12px;font-size:9px;line-height:1.7;display:flex;gap:10px;align-items:center;
+ max-width:90%;box-shadow:4px 4px 0 #000a;animation:tin .25s ease-out}
+.toast small{display:block;color:var(--gold);font-size:7px}
+@keyframes tin{from{transform:translateY(-20px);opacity:0}}
+@media (prefers-reduced-motion: reduce){.hint .hand,.toast{animation:none}}
+</style>
+<div id="app">
+ <!-- HOME -->
+ <section class="screen" id="home">
+  <div class="topbar"><span class="shellcount" id="homeShells"></span><button class="sq" id="muteHome" aria-label="Sesi kapat"></button></div>
+  <img class="logo" alt="Swim to Escape: Octopus logosu" src="data:image/png;base64,{{LOGO}}">
+  <h1>SWIM TO ESCAPE<span>OCTOPUS</span></h1>
+  <div class="menu">
+   <button class="primary" id="goLevels">BÖLÜMLER <small id="homeStars"></small></button>
+   <button id="goEndless">SONSUZ MOD <small id="homeBest"></small></button>
+   <button id="goDaily">GÜNLÜK BÖLÜM <small id="homeDaily"></small></button>
+   <button id="goShop">MAĞAZA <small id="homeShop"></small></button>
+   <button id="goAch">BAŞARIMLAR <small id="homeAch"></small></button>
+  </div>
+  <p class="small muted" style="text-align:center;margin:0">Kaydır ya da ok tuşları · Boşluk: mürekkep</p>
+ </section>
+
+ <!-- LEVEL SELECT -->
+ <section class="screen" id="levels" hidden>
+  <div class="topbar"><button class="sq" data-back aria-label="Geri">‹</button><h2>BÖLÜMLER</h2><span class="shellcount" id="lvShells"></span></div>
+  <div id="worlds" style="display:flex;flex-direction:column;gap:14px;width:100%;align-items:center"></div>
+ </section>
+
+ <!-- SHOP -->
+ <section class="screen" id="shop" hidden>
+  <div class="topbar"><button class="sq" data-back aria-label="Geri">‹</button><h2>MAĞAZA</h2><span class="shellcount" id="shopShells"></span></div>
+  <canvas class="preview" id="shopPrev" width="120" height="120"></canvas>
+  <div class="tabs" role="tablist">
+   <button role="tab" aria-selected="true" data-tab="look">GÖRÜNÜM</button>
+   <button role="tab" aria-selected="false" data-tab="power">GÜÇLENDİRME</button>
+  </div>
+  <div class="items" id="shopItems"></div>
+ </section>
+
+ <!-- ACHIEVEMENTS -->
+ <section class="screen" id="achs" hidden>
+  <div class="topbar"><button class="sq" data-back aria-label="Geri">‹</button><h2>BAŞARIMLAR</h2><span class="small gold" id="achCount"></span></div>
+  <div id="achList" style="display:flex;flex-direction:column;gap:8px;width:100%;align-items:center;padding-bottom:10px"></div>
+ </section>
+
+ <!-- GAME -->
+ <section id="game" hidden>
+  <div class="hud">
+   <span class="shellcount" id="hudShells"></span>
+   <div class="mid"><div class="stars" id="hudStars"></div><div class="big" id="hudMeters" hidden></div><div class="sub" id="hudSub"></div></div>
+   <div class="hearts" id="hudHearts"></div>
+   <button class="sq" id="muteGame" aria-label="Sesi kapat"></button>
+   <button class="sq" id="btnPause" aria-label="Duraklat">II</button>
+  </div>
+  <div id="stage">
+   <canvas id="cv"></canvas>
+   <div class="banner" id="banner" hidden></div>
+   <div class="hint" id="swipeHint" hidden><canvas class="hand" id="handIco" width="16" height="16"></canvas>KAYDIRARAK YÜZ</div>
+  </div>
+  <div class="powerbar" id="powerbar"></div>
+ </section>
+
+ <div class="over" id="over" hidden><div class="panel" id="panel" role="dialog" aria-modal="true"></div></div>
+ <div id="toasts" aria-live="polite"></div>
+</div>
+<script>
+{{SCRIPT}}
+</script>
