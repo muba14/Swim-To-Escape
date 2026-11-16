@@ -13,13 +13,21 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
       - name: Generate platform folders
         run: flutter create --platforms=android,ios --org com.muba14 --project-name swim_to_escape .
+      # Android lint's release check crashes on some plugin sources
+      # (NoSuchMethodError List.removeLast). Lint is not needed to build
+      # the APK, so it is switched off for every module.
+      - name: Skip release lint
+        run: |
+          f=android/build.gradle.kts; [ -f "$f" ] || f=android/build.gradle
+          printf '\nsubprojects {\n    tasks.matching { it.name.startsWith("lintVital") }.configureEach { enabled = false }\n}\n' >> "$f"
+          tail -4 "$f"
       - run: flutter pub get
       - name: App icon
         run: dart run flutter_launcher_icons
